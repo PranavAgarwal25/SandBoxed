@@ -5,7 +5,7 @@ Orchestrates the full pipeline for a folder of floorplan images:
 
     1. Scan input directory for images (PNG, JPG, SVG)
     2. Pre-process each image (SVG→PNG conversion, resize, enhance)
-    3. Run element detection (Roboflow API or local CNN)
+    3. Run element detection (local CNN)
     4. Post-process and normalise detections
     5. Annotate images with bounding boxes and segmentation overlays
     6. Persist per-image JSON, annotated images, and a summary report
@@ -39,7 +39,7 @@ from FloorplanToBlenderLib.inference import (
     colourise_depth,
     overlay_mask,
     mask_to_bboxes,
-    detections_to_roboflow_json,
+    detections_to_json,
     full_postprocess,
     draw_class_legend,
 )
@@ -53,10 +53,10 @@ logger = logging.getLogger("mod")
 # ===================================================================== #
 
 CLIENT = InferenceHTTPClient(
-    api_url="https://detect.roboflow.com",
+    api_url="https://detect.floorplan-service.com",
     api_key="2mJz8J9Jx7NWoco65LK3",
 )
-ROBOFLOW_MODEL_ID = "builderformer-4/2"
+CLOUD_MODEL_ID = "builderformer-4/2"
 
 INPUT_FOLDER       = "input_images"
 OUTPUT_FOLDER      = "output_images"
@@ -149,13 +149,13 @@ def compute_image_hash(path, chunk_size=65536):
 def run_detection(image_path, use_local=False, confidence=0):
     """Run floorplan element detection on a single image.
 
-    Returns a Roboflow-compatible dict with ``predictions``.
+    Returns an API-compatible dict with ``predictions``.
     """
     if use_local and os.path.isfile(LOCAL_CHECKPOINT):
         engine = FloorplanInference(LOCAL_CHECKPOINT)
-        return engine.predict_as_roboflow_json(image_path)
+        return engine.predict_as_json(image_path)
     else:
-        model_id = f"{ROBOFLOW_MODEL_ID}?confidence={confidence}"
+        model_id = f"{CLOUD_MODEL_ID}?confidence={confidence}"
         return CLIENT.infer(image_path, model_id=model_id)
 
 
@@ -587,7 +587,7 @@ def parse_args():
     )
     parser.add_argument(
         "--local", action="store_true", default=False,
-        help="Use local CNN instead of Roboflow API",
+        help="Use local CNN instead of cloud API",
     )
     parser.add_argument(
         "--enhance", action="store_true", default=False,

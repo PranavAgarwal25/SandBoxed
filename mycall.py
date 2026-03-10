@@ -1,17 +1,3 @@
-"""
-mycall.py  –  Unified inference entry-point for the 2D→3D floorplan pipeline.
-
-Supports two detection back-ends:
-  1. Roboflow cloud API  (``builderformer-4/2`` object-detection model)
-  2. Local CNN           (``MultiTaskFloorplanNet`` segmentation + depth)
-
-The back-end is selected automatically: when a local checkpoint exists the
-script uses the CNN; otherwise it falls back to the Roboflow API.  The
-``--local`` / ``--api`` flags can override the auto-detection.
-
-All outputs conform to the same Roboflow JSON schema so downstream code
-(``mod.py``, ``main.py``, Blender export) is agnostic to the back-end.
-"""
 
 import os
 import sys
@@ -42,7 +28,7 @@ from FloorplanToBlenderLib.inference import (
     colourise_depth,
     overlay_mask,
     mask_to_bboxes,
-    detections_to_roboflow_json,
+    detections_to_json,
     full_postprocess,
     draw_class_legend,
 )
@@ -50,9 +36,6 @@ from FloorplanToBlenderLib.inference import (
 logger = logging.getLogger("mycall")
 
 
-# ===================================================================== #
-#  ROBOFLOW  API  CLIENT                                                 #
-# ===================================================================== #
 
 CLIENT = InferenceHTTPClient(
     api_url="https://detect.roboflow.com",
@@ -149,16 +132,16 @@ def full_preprocess(image_bgr, max_dim=MAX_DIMENSION, enhance=True):
 #  BACK-END  INFERENCE  FUNCTIONS                                        #
 # ===================================================================== #
 
-def infer_roboflow(image_path, confidence=0):
-    """Call the Roboflow hosted model and return the raw JSON dict."""
-    model_id = f"{ROBOFLOW_MODEL_ID}?confidence={confidence}"
+def infer_api(image_path, confidence=0):
+    """Call the cloud-hosted detection model and return the raw JSON dict."""
+    model_id = f"{CLOUD_MODEL_ID}?confidence={confidence}"
     result = CLIENT.infer(image_path, model_id=model_id)
     return result
 
 
 def infer_local(image_path, checkpoint=LOCAL_CHECKPOINT,
                 use_tta=False, postprocess=True):
-    """Run the local CNN and return a Roboflow-compatible dict.
+    """Run the local CNN and return an API-compatible dict.
 
     Parameters
     ----------
@@ -184,7 +167,7 @@ def infer_local(image_path, checkpoint=LOCAL_CHECKPOINT,
     h, w = seg_mask.shape
     detections = mask_to_bboxes(seg_mask, min_area=200)
 
-    result = detections_to_roboflow_json(detections, w, h)
+    result = detections_to_json(detections, w, h)
     result["_seg_mask"] = seg_mask
     result["_depth_map"] = depth_map
     return result
@@ -199,14 +182,14 @@ def infer(image_path, use_local_model=None, use_tta=False):
         Path to the floorplan image.
     use_local_model : bool or None
         ``True`` – force local CNN.
-        ``False`` – force Roboflow API.
+        ``False`` – force cloud API.
         ``None`` – auto (local if checkpoint exists, else API).
     use_tta : bool
         Enable test-time augmentation (local only).
 
     Returns
     -------
-    dict – Roboflow-compatible JSON with ``image`` and ``predictions``.
+    dict – API-compatible JSON with ``image`` and ``predictions``.
     """
     if use_local_model is None:
         use_local_model = os.path.isfile(LOCAL_CHECKPOINT)
@@ -215,8 +198,8 @@ def infer(image_path, use_local_model=None, use_tta=False):
         logger.info("[mycall] Using local CNN  (%s)", LOCAL_CHECKPOINT)
         return infer_local(image_path, use_tta=use_tta)
     else:
-        logger.info("[mycall] Using Roboflow API  (%s)", ROBOFLOW_MODEL_ID)
-        return infer_roboflow(image_path)
+        logger.info("[mycall] Using cloud API  (%s)", CLOUD_MODEL_ID)
+        return infer_api(image_path)
 
 
 # ===================================================================== #
@@ -226,7 +209,7 @@ def infer(image_path, use_local_model=None, use_tta=False):
 def normalise_predictions(result):
     """Ensure all prediction dicts have consistent keys and types.
 
-    Both Roboflow API and local CNN produce slightly different schemata;
+    Both cloud API and local CNN produce slightly different schemata;
     this function unifies them.
     """
     predictions = result.get("predictions", [])
@@ -359,14 +342,14 @@ def _build_colour_map(predictions):
 
 
 def create_comparison_image(image_bgr, api_preds, local_preds):
-    """Side-by-side comparison: Roboflow API vs. local CNN detections."""
+    """Side-by-side comparison: cloud API vs. local CNN detections."""
     left = image_bgr.copy()
     right = image_bgr.copy()
 
     draw_detections(left, api_preds)
     draw_detections(right, local_preds)
 
-    cv2.putText(left, "Roboflow API", (10, 30),
+    cv2.putText(left, "Cloud API", (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
     cv2.putText(right, "Local CNN", (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
@@ -435,7 +418,7 @@ def generate_summary(result, image_path, elapsed_s):
 
     return {
         "image": os.path.basename(image_path),
-        "backend": "local_cnn" if "_seg_mask" in result else "roboflow_api",
+        "backend": "local_cnn" if "_seg_mask" in result else "cloud_api",
         "num_detections": len(preds),
         "class_counts": class_counts,
         "elapsed_seconds": round(elapsed_s, 3),
@@ -497,7 +480,7 @@ def batch_infer(image_paths, use_local_model=None, use_tta=False,
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Floorplan element detection  (Roboflow API or local CNN)"
+        description="Floorplan element detection  (cloud API or local CNN)"
     )
     parser.add_argument(
         "images", nargs="+",
@@ -509,7 +492,7 @@ def parse_args():
     )
     parser.add_argument(
         "--api", action="store_true", default=False,
-        help="Force Roboflow API inference",
+        help="Force cloud API inference",
     )
     parser.add_argument(
         "--tta", action="store_true", default=False,
@@ -655,12 +638,12 @@ def _file_md5(path, chunk_size=65536):
 # ===================================================================== #
 
 def compare_backends(image_path, confidence_threshold=0.0):
-    """Run both Roboflow API and local CNN on the same image and return a
+    """Run both cloud API and local CNN on the same image and return a
     comparison dict showing per-class detection counts and overlap.
 
     Useful for validating that the local model matches cloud performance.
     """
-    api_result = infer_roboflow(image_path)
+    api_result = infer_api(image_path)
     api_result = normalise_predictions(api_result)
     if confidence_threshold > 0:
         api_result = filter_by_confidence(api_result, confidence_threshold)

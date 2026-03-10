@@ -6,9 +6,9 @@ import numpy as np
 
 
 # ---------------------------------------------------------------------------
-#  Floorplan element classes – aligns with the Roboflow builderformer-4/2
-#  object-detection model so that both the cloud API and the local CNN
-#  produce outputs in the same label space.
+#  Floorplan element classes – shared between the cloud detection service
+#  and the local CNN so that both backends produce outputs in the same
+#  label space.
 # ---------------------------------------------------------------------------
 FLOORPLAN_CLASSES = [
     "background",       # 0

@@ -4,7 +4,7 @@ dataset.py  –  PyTorch Dataset implementations for the floorplan segmentation
 
 Provides:
     * ``FloorplanDataset``        – primary training / validation dataset
-    * ``RoboflowResultDataset``   – wraps Roboflow API JSON results
+    * ``DetectionResultDataset``  – wraps cloud API JSON results
     * ``FloorplanTileDataset``    – large-image tiling for high-res inputs
     * ``BalancedSampler``         – class-balanced batch sampler
     * Augmentation helpers, data-splitting, integrity checks, and a colour
@@ -601,15 +601,15 @@ class FloorplanDataset(Dataset):
 
 
 # ===================================================================== #
-#  ROBOFLOW  JSON  DATASET                                               #
+#  DETECTION  JSON  DATASET                                              #
 # ===================================================================== #
 
-class RoboflowResultDataset(Dataset):
+class DetectionResultDataset(Dataset):
     """
-    Wraps Roboflow JSON prediction files and corresponding images so they
-    can be consumed by the local CNN for refinement or evaluation.
+    Wraps cloud API JSON prediction files and corresponding images so
+    they can be consumed by the local CNN for refinement or evaluation.
 
-    Each JSON file is expected to conform to the standard Roboflow output
+    Each JSON file is expected to conform to the standard detection output
     schema (``image``, ``predictions`` keys).
 
     Parameters
@@ -687,7 +687,7 @@ class RoboflowResultDataset(Dataset):
         return {
             "image": image_t,
             "mask": mask_t,
-            "name": f"roboflow_{index}",
+            "name": f"detection_{index}",
             "predictions": predictions,
         }
 

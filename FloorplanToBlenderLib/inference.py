@@ -7,7 +7,7 @@ Provides:
     * ``EnsembleInference``        – multi-checkpoint ensemble with soft voting
     * ``TestTimeAugmentation``     – TTA wrapper (flips + rotations)
     * Post-processing utilities    – morphological cleanup, CRF refinement,
-                                     contour extraction, and Roboflow-compatible
+                                     contour extraction, and API-compatible
                                      JSON export.
     * Evaluation helpers           – compare predicted masks against ground truth.
 """
@@ -231,7 +231,7 @@ def mask_to_contours(mask, min_area=200):
 def mask_to_bboxes(mask, min_area=200, confidence=0.95):
     """Convert a segmentation mask into bounding-box detections.
 
-    Each detection dict uses the Roboflow schema:  ``class``, ``class_id``,
+    Each detection dict uses the standard schema:  ``class``, ``class_id``,
     ``x`` (centre), ``y`` (centre), ``width``, ``height``, ``confidence``.
     """
     detections = []
@@ -256,8 +256,8 @@ def mask_to_bboxes(mask, min_area=200, confidence=0.95):
     return detections
 
 
-def detections_to_roboflow_json(detections, image_width, image_height):
-    """Package bounding-box detections into a Roboflow-compatible dict."""
+def detections_to_json(detections, image_width, image_height):
+    """Package bounding-box detections into an API-compatible dict."""
     return {
         "image": {"width": image_width, "height": image_height},
         "predictions": detections,
@@ -403,15 +403,15 @@ class FloorplanInference:
         return results
 
     # ------------------------------------------------------------------
-    #  Roboflow-compatible JSON output
+    #  API-compatible JSON output
     # ------------------------------------------------------------------
 
-    def predict_as_roboflow_json(self, image_path, min_area=200):
-        """Predict and return a dict matching the Roboflow response schema."""
+    def predict_as_json(self, image_path, min_area=200):
+        """Predict and return a dict matching the detection API response schema."""
         seg_mask, _ = self.predict(image_path)
         h, w = seg_mask.shape
         detections = mask_to_bboxes(seg_mask, min_area=min_area)
-        return detections_to_roboflow_json(detections, w, h)
+        return detections_to_json(detections, w, h)
 
     # ------------------------------------------------------------------
     #  Save helpers
@@ -797,11 +797,11 @@ def evaluate_directory(engine, image_dir, mask_dir, input_size=(512, 512)):
 
 def save_predictions_json(image_paths, engine, output_path, min_area=200):
     """Run inference on *image_paths* and write all results to a single
-    JSON file with Roboflow-compatible records.
+    JSON file with API-compatible detection records.
     """
     records = []
     for path in image_paths:
-        result = engine.predict_as_roboflow_json(path, min_area=min_area)
+        result = engine.predict_as_json(path, min_area=min_area)
         result["source_image"] = os.path.basename(path)
         records.append(result)
 
